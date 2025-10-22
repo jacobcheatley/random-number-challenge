@@ -1,0 +1,45 @@
+[project]
+name = "random-number"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "plotly[express]>=6.3.1",
+    "polars>=1.34.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.406",
+    "ruff>=0.14.1",
+]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "N",  # pep8-naming
+]
+ignore = [
+    "B008",  # Do not perform function calls in argument defaults - too many false positives especially with FastAPI
+    "C901",  # Function is too complex - warned by radon
+    "E501",  # Line too long - handled by ruff formatter
+]
+
+[tool.pyright]
+reportUnusedCallResult = "none"
+ignore = [
+    "**/*_pb2.py",
+    "**/*_pb2.pyi",
+]

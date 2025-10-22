@@ -1,0 +1,16 @@
+{
+    "workbench.colorCustomizations": {
+        "editorGroup.border": "#ffffff",
+        "panel.border": "#ffffff",
+        "sash.hoverBorder": "#ffffff",
+        "sideBar.border": "#ffffff",
+        "statusBar.background": "#ffffff",
+        "statusBar.border": "#ffffff",
+        "statusBar.foreground": "#15202b",
+        "statusBarItem.hoverBackground": "#e6e6e6",
+        "statusBarItem.remoteBackground": "#ffffff",
+        "statusBarItem.remoteForeground": "#15202b",
+        "tab.activeBorder": "#ffffff"
+    },
+    "python-envs.pythonProjects": []
+}

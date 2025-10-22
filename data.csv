@@ -1,0 +1,18 @@
+submitter,message,number,timestamp,method,type,comment
+Zeb,198,198,15:14,Channel,Normal Integer,
+MrGeneric,"4,123.52",4123.52,15:14,Reply,Normal Float,
+Ben,12,12,15:14,Channel,Normal Integer,
+Jen (Scribe),"09 (with the leading 0, specifically)",9,15:15,Channel,Bullshit,Leading 0 is interesting
+Crispy,420,420,17:01,Channel,Meme Number,
+Maldwag (Mallory),75,75,18:21,Channel,Normal Integer,
+Wade K,7,7,15:16,Thread,Normal Integer,
+Jen (Scribe),"09 (with the leading 0, specifically)",9,15:17,Thread,Bullshit,Leading 0 is interesting
+Ahbakai (Chris),42,42,15:24,Thread,Meme Number,
+Neil,37727374882,37727374882,15:45,Thread,Normal Integer,
+Brook,1.8e308,1800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,16:16,Thread,Bullshit,Arguably this is 'inf'
+Nalyd,71,71,16:57,Thread,Normal Integer,
+Alex,69,69,17:12,Thread,Bullshit,Nice.
+Pigeon (Sian),1,1,17:55,Thread,Normal Integer,
+James,∞,inf,21:26,Thread,Symbol,
+James," if you will not accept that, then I guess  π (3.14159) ",3.141592654,21:27,Thread,Symbol,
+ollie,-2.71828,-2.71828,22:30,Thread,Normal Float,-e
