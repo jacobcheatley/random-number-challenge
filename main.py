@@ -1,9 +1,17 @@
 import os
+import statistics
+import warnings
+from collections import Counter
+from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
 import polars as pl
+from polars.functions import first
+
+warnings.filterwarnings(action="ignore", category=pl.exceptions.PolarsInefficientMapWarning)  # pyright: ignore[reportArgumentType]
 
 
 def load_data() -> pl.DataFrame:
@@ -58,13 +66,13 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
     fig_hist.update_layout(
         title="Distribution of Numbers (Reasonable Range)", xaxis_title="Number Value", yaxis_title="Count"
     )
-    fig_hist.write_html("plots/histogram_numbers.html")
+    fig_hist.write_html(Path("plots/histogram_numbers.html"))
     print("✓ Histogram saved")
 
     # 2. Box plot of numbers (same filtered data)
     fig_box = go.Figure(data=[go.Box(y=hist_values, name="Numbers")])
     fig_box.update_layout(title="Box Plot of Numbers (Reasonable Range)", yaxis_title="Number Value")
-    fig_box.write_html("plots/boxplot_numbers.html")
+    fig_box.write_html(Path("plots/boxplot_numbers.html"))
     print("✓ Box plot saved")
 
     # 3. Pie chart of submitter count
@@ -74,7 +82,7 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
         data=[go.Pie(labels=submitter_counts["submitter"], values=submitter_counts["len"], hole=0.3)]
     )
     fig_pie_submitter.update_layout(title="Submissions by Person")
-    fig_pie_submitter.write_html("plots/pie_submitters.html")
+    fig_pie_submitter.write_html(Path("plots/pie_submitters.html"))
     print("✓ Submitter pie chart saved")
 
     # 4. Pie chart of method count
@@ -82,7 +90,7 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
 
     fig_pie_method = go.Figure(data=[go.Pie(labels=method_counts["method"], values=method_counts["len"], hole=0.3)])
     fig_pie_method.update_layout(title="Submissions by Method (Channel vs Thread vs Reply)")
-    fig_pie_method.write_html("plots/pie_methods.html")
+    fig_pie_method.write_html(Path("plots/pie_methods.html"))
     print("✓ Method pie chart saved")
 
     # 5. Pie chart of type count (new column from updated CSV)
@@ -90,7 +98,7 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
 
     fig_pie_type = go.Figure(data=[go.Pie(labels=type_counts["type"], values=type_counts["len"], hole=0.3)])
     fig_pie_type.update_layout(title="Submissions by Number Type")
-    fig_pie_type.write_html("plots/pie_types.html")
+    fig_pie_type.write_html(Path("plots/pie_types.html"))
     print("✓ Type pie chart saved")
 
     # 6. Scatter plot of timestamp_parsed vs number (filtered for reasonable numbers)
@@ -100,23 +108,69 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
         .to_dict(as_series=False)
     )
 
-    fig_scatter = go.Figure(
-        data=go.Scatter(
+    # Calculate trend line (linear regression on log scale)
+    # Convert timestamps to numeric values (seconds since first timestamp)
+    timestamps: list[datetime] = scatter_data["timestamp_parsed"]
+    first_time = min(timestamps)
+    x_numeric = np.array([(t - first_time).total_seconds() for t in timestamps])
+    y_values = np.array(scatter_data["numeric_value"])
+
+    # Filter out zeros and negative values for log scale
+    valid_mask = y_values > 0
+    x_valid = x_numeric[valid_mask]
+    y_valid = y_values[valid_mask]
+    y_log = np.log10(y_valid)
+
+    # Calculate linear regression on log scale
+    correlation = np.corrcoef(x_valid, y_log)[0, 1]
+    slope, intercept = np.polyfit(x_valid, y_log, 1)
+
+    # Generate trend line points
+    x_trend = np.linspace(x_numeric.min(), x_numeric.max(), 100)
+    y_trend_log = slope * x_trend + intercept
+    y_trend = 10**y_trend_log
+
+    # Convert x_trend back to timestamps for plotting
+    trend_timestamps = [first_time + timedelta(seconds=float(x)) for x in x_trend]
+
+    # Create formula string
+    formula = f"log₁₀(y) = {slope:.2e}·t + {intercept:.2f}"
+
+    fig_scatter = go.Figure()
+
+    # Add scatter points
+    fig_scatter.add_trace(
+        go.Scatter(
             x=scatter_data["timestamp_parsed"],
             y=scatter_data["numeric_value"],
             mode="markers",
+            name="Data",
             text=scatter_data["submitter"],
-            marker=dict(size=10, opacity=0.7),
+            marker={"size": 10, "opacity": 0.7},
             hovertemplate="<b>%{text}</b><br>Time: %{x}<br>Number: %{y}<extra></extra>",
         )
     )
+
+    # Add trend line
+    fig_scatter.add_trace(
+        go.Scatter(
+            x=trend_timestamps,
+            y=y_trend,
+            mode="lines",
+            name=f"Trend (r={correlation:.3f})",
+            line={"color": "red", "width": 2, "dash": "dash"},
+            hovertemplate="Trend line<br>%{y:.2f}<extra></extra>",
+        )
+    )
+
     fig_scatter.update_layout(
-        title="Numbers Over Time",
+        title=f"Numbers Over Time<br><sub>{formula} | Correlation: r={correlation:.3f}</sub>",
         xaxis_title="Timestamp",
         yaxis_title="Number Value",
         yaxis_type="log",  # Log scale for better visualization
+        showlegend=True,
     )
-    fig_scatter.write_html("plots/scatter_time_vs_number.html")
+    fig_scatter.write_html(Path("plots/scatter_time_vs_number.html"))
     print("✓ Scatter plot saved")
 
     # 7. Bar chart of submission frequency distribution
@@ -124,7 +178,6 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
     player_submission_counts = df.group_by("submitter").len().select("len").to_dict(as_series=False)["len"]
 
     # Count frequency of each submission count
-    from collections import Counter
 
     frequency_dist = Counter(player_submission_counts)
 
@@ -138,7 +191,7 @@ def draw_summary_plots(df: pl.DataFrame) -> None:
         yaxis_title="Number of Players",
         xaxis={"type": "category"},
     )
-    fig_bar.write_html("plots/bar_submission_frequency.html")
+    fig_bar.write_html(Path("plots/bar_submission_frequency.html"))
     print("✓ Submission frequency bar chart saved")
 
     print("\nAll plots saved to 'plots/' directory!")
@@ -152,26 +205,62 @@ def print_fun_facts(df: pl.DataFrame) -> None:
     # Filter for finite numbers (exclude infinity)
     finite_df = df.filter(pl.col("number") != "inf")
     finite_numbers = finite_df.select("number_decimal").to_series().to_list()
-    finite_numeric = [float(x) for x in finite_numbers]
+
+    # Work with Decimal values to preserve precision (including Brook's 1.8e308)
+    finite_decimals = [x for x in finite_numbers if x != float("inf")]
+
+    # Find min and max using Decimal values
+    min_value = min(finite_decimals)
+    max_value = max(finite_decimals)
+
+    # Also keep float versions for operations that need them (filtering out inf values)
+    finite_numeric = [float(x) for x in finite_decimals if float(x) != float("inf")]
+
+    # Create a temporary column with float values for efficient filtering
+    finite_df_with_float = finite_df.with_columns(
+        pl.col("number_decimal").map_elements(lambda x: float(x), return_dtype=pl.Float64).alias("number_float")
+    )
+
+    # Find submitters for min and max
+    min_submitter = (
+        finite_df.filter(pl.col("number_decimal").map_elements(lambda x: x == min_value, return_dtype=pl.Boolean))
+        .select("submitter")
+        .item()
+    )
+
+    max_submitter = (
+        finite_df.filter(pl.col("number_decimal").map_elements(lambda x: x == max_value, return_dtype=pl.Boolean))
+        .select("submitter")
+        .item()
+    )
 
     # === BASIC STATISTICS ===
     print("📊 BASIC STATISTICS")
     print("-" * 40)
     print(f"Total submissions: {len(df)}")
-    print(
-        f"Smallest number: {min(finite_numeric)} (submitted by {finite_df.filter(pl.col('number_decimal') == min(finite_numbers)).select('submitter').item()})"
-    )
-    print(
-        f"Largest finite number: {max(finite_numeric)} (submitted by {finite_df.filter(pl.col('number_decimal') == max(finite_numbers)).select('submitter').item()})"
-    )
-    print(f"Mean: {sum(finite_numeric) / len(finite_numeric):.2f}")
-    print(f"Median: {sorted(finite_numeric)[len(finite_numeric) // 2]:.2f}")
+    print(f"Smallest number: {min_value} (submitted by {min_submitter})")
+    print(f"Largest finite number: {max_value} (submitted by {max_submitter})")
 
-    import statistics
+    # Calculate mean using Decimal values
+    mean_val = sum(finite_decimals, Decimal(0)) / len(finite_decimals)
+    print(f"Mean: {mean_val:.2e}")
 
-    if len(finite_numeric) > 1:
-        print(f"Standard deviation: {statistics.stdev(finite_numeric):.2e}")
-    print(f"Range (max - min): {max(finite_numeric) - min(finite_numeric):.2e}")
+    # Calculate median using Decimal values
+    sorted_decimals = sorted(finite_decimals)
+    median_val = (
+        sorted_decimals[len(sorted_decimals) // 2]
+        if len(sorted_decimals) % 2 == 1
+        else (sorted_decimals[len(sorted_decimals) // 2 - 1] + sorted_decimals[len(sorted_decimals) // 2]) / 2
+    )
+    print(f"Median: {median_val}")
+
+    if len(finite_decimals) > 1:
+        stdev = statistics.stdev(finite_decimals)
+        print(f"Standard deviation: {stdev:.2e}")
+
+    # Calculate range using Decimal values
+    range_val = max_value - min_value
+    print(f"Range (max - min): {range_val:.2e}")
 
     # === NEGATIVE NUMBERS ===
     print(f"\n🔻 NEGATIVE NUMBERS")
@@ -179,7 +268,7 @@ def print_fun_facts(df: pl.DataFrame) -> None:
     negative_count = sum(1 for x in finite_numeric if x < 0)
     print(f"Count: {negative_count}")
     if negative_count > 0:
-        negative_nums = finite_df.filter(pl.col("number_decimal") < 0)
+        negative_nums = finite_df_with_float.filter(pl.col("number_float") < 0)
         for row in negative_nums.iter_rows(named=True):
             print(f"  • {row['submitter']}: {row['number_decimal']}")
 
@@ -231,13 +320,18 @@ def print_fun_facts(df: pl.DataFrame) -> None:
     # === DUPLICATE NUMBERS ===
     print(f"\n🔁 DUPLICATE NUMBERS")
     print("-" * 40)
-    duplicates = finite_df.group_by("number_decimal").len().filter(pl.col("len") > 1)
+    # Use the existing finite_df_with_float that already has number_float column
+    duplicates = (
+        finite_df_with_float.group_by("number_float")
+        .agg([pl.col("submitter").alias("submitters"), pl.len().alias("count")])
+        .filter(pl.col("count") > 1)
+    )
+
     if len(duplicates) > 0:
         print(f"Count of duplicate values: {len(duplicates)}")
         for row in duplicates.iter_rows(named=True):
-            dup_entries = finite_df.filter(pl.col("number_decimal") == row["number_decimal"])
-            submitters = ", ".join(dup_entries.select("submitter").to_series().to_list())
-            print(f"  • {row['number_decimal']}: submitted {row['len']} times by {submitters}")
+            submitters = ", ".join(row["submitters"])
+            print(f"  • {row['number_float']}: submitted {row['count']} times by {submitters}")
     else:
         print("No duplicate numbers!")
 
@@ -275,25 +369,41 @@ def print_fun_facts(df: pl.DataFrame) -> None:
     # Leading zero
     leading_zero = df.filter(pl.col("message").str.contains("leading 0"))
     if len(leading_zero) > 0:
-        print(
-            f"  • Leading zero enthusiast: {leading_zero.select('submitter').item()} with '{leading_zero.select('message').item()}'"
-        )
+        submitter = leading_zero.select("submitter").to_series()[0]
+        message = leading_zero.select("message").to_series()[0]
+        print(f"  • Leading zero enthusiast: {submitter} with '{message}'")
 
-    # Scientific notation
-    sci_notation = df.filter(pl.col("number").str.contains("e"))
+    # Scientific notation - check message field since number is expanded
+    sci_notation = df.filter(pl.col("message").str.contains("(?i)e[0-9]"))
     if len(sci_notation) > 0:
-        print(
-            f"  • Scientific notation user: {sci_notation.select('submitter').item()} with {sci_notation.select('number').item()}"
-        )
+        submitter = sci_notation.select("submitter").to_series()[0]
+        message = sci_notation.select("message").to_series()[0]
+        print(f"  • Scientific notation user: {submitter} with {message}")
 
     # Infinity
     inf_entries = df.filter(pl.col("number") == "inf")
     if len(inf_entries) > 0:
-        print(
-            f"  • Infinity lover: {inf_entries.select('submitter').item()} with {inf_entries.select('message').item()}"
-        )
+        submitter = inf_entries.select("submitter").to_series()[0]
+        message = inf_entries.select("message").to_series()[0]
+        print(f"  • Infinity lover: {submitter} with {message}")
 
     print("\n" + "=" * 60)
+
+
+def first_submission_from_each_submitter(df: pl.DataFrame) -> pl.DataFrame:
+    # Sort by timestamp_parsed to ensure earliest submissions come first
+    sorted_df = df.sort(["submitter", "timestamp_parsed"])
+
+    # Get the first submission from each submitter
+    first_submissions = sorted_df.unique(subset=["submitter"], keep="first")
+
+    return first_submissions
+
+
+def winner(first_submissions_df: pl.DataFrame) -> pl.DataFrame:
+    # Pick a random winning row
+    winning_row = first_submissions_df.sample(n=1, with_replacement=False, seed=123)
+    return winning_row
 
 
 def main():
@@ -301,6 +411,18 @@ def main():
     print_troublesome_numbers(df)
     draw_summary_plots(df)
     print_fun_facts(df)
+
+    first_submissions_df = first_submission_from_each_submitter(df)
+    print("\nFirst submission from each submitter:")
+    for row in first_submissions_df.iter_rows(named=True):
+        print(f"  • {row['submitter']}: {row['number']} at {row['timestamp_parsed']}")
+
+    winning_row = winner(first_submissions_df)
+    print("\n" + "=" * 60)
+    print("🏆 RANDOMLY CHOSEN WINNER 🏆")
+    for row in winning_row.iter_rows(named=True):
+        print(f"Winner: {row['submitter']} with number {row['number']} submitted at {row['timestamp_parsed']}")
+    print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":
